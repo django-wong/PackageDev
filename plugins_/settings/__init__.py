@@ -51,7 +51,6 @@ POPUP_TEMPLATE = """
     h2 {{
         color: color(var(--html-background) blend(var(--foreground) 30%));
         font-size: 1.0rem;
-        font-family: monospace;
     }}
     p {{
         margin: 0;
