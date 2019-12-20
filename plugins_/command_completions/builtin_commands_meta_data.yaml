@@ -1,8 +1,13 @@
+---
+# Metadata about the described commands.
+build: 4052
+---
 append:
   args: !!omap
     - characters:
     - force: false
     - scroll_to_end: false
+    - disable_tab_translation: false
   command_type: text
   doc_string: Append the given text to the end of the document.
 auto_complete:
@@ -31,6 +36,17 @@ clear_fields:
 close_file:
   command_type: window
   doc_string: Close the active file.
+close_folder_list:
+  command_type: window
+  doc_string: Remove all folders from the sidebar and hide it.
+close_tag:
+  args:
+    insert_slash: true
+  command_type: window
+  doc_string: Close an HTML/XML tag.
+close_workspace:
+  command_type: window
+  doc_string: Close the active workspace.
 commit_completion:
   command_type: text
   doc_string: Insert the selected item into the text and close completion panel.
@@ -43,11 +59,22 @@ copy:
 cut:
   command_type: text
   doc_string: Cut the selected text to the clipboard.
+delete_word:
+  command_type: text
+  doc_string: Delete the (sub-)word in front of or after each caret.
+  args:
+    forward: true
+    sub_words: false
+duplicate_line:
+  command_type: text
+  doc_string: Create a copy of each caret's line.
 expand_selection:
   args:
-    to: line|scope|brackets|indentation|tag|bol|hardbol|eol|hardeol|bof|eof|brackets
+    to: line|scope|brackets|indentation|tag|bol|hardbol|eol|hardeol|bof|eof|brackets|smart
   command_type: text
   doc_string: Expand the current text caret selection(s) to the specified location.
+expand_snippet:
+  command_type: text
 find_all_under:
   command_type: text
   doc_string: Seach and select all text matches, which are the same as the text selected text or the word under the caret.
@@ -106,6 +133,7 @@ left_delete:
 move:
   args: !!omap
     - by: chars|pages|lines|characters|words|word_ends|subwords|subword_ends|stops
+    - empty_line: false  # used by "stops"
     - forward: true
     - extend: false
     - lines: false
@@ -125,9 +153,15 @@ move_to_group:
 new_file:
   command_type: window
   doc_string: Create a new empty tab in the active window.
+new_os_tab:
+  command_type: window
+  doc_string: Create a new empty window in the os tab.
 new_window:
   command_type: application
   doc_string: Open a new ST window.
+new_window_for_project:
+  command_type: window
+  doc_string: Clone project into a new workspace.
 next_bookmark:
   command_type: text
   doc_string: Navigate to the next bookmark in the document.
@@ -137,10 +171,18 @@ next_field:
 next_misspelling:
   command_type: text
   doc_string: Navigate to the next misspelling in the document.
+next_modification:
+  command_type: text
+  doc_string: Navigate to the next modification in the document.
+next_os_tab:
+  command_type: window
+  doc_string: Set the focus to the next window in the os tab.
 next_result:
   command_type: window
   doc_string: Jump to the next build result.
 next_view:
+  args:
+    extend: true
   command_type: window
   doc_string: Set the focus to the next view tab bar.
 next_view_in_stack:
@@ -160,6 +202,13 @@ open_file:
   command_type: window
   doc_string: Open the specified file, and if it doesn't exist, prefill the default
     contents.
+open_project_or_workspace:
+  command_type: window
+  doc_string: Open the specified project or workspace file, in a new window by default.
+  args:
+    file:
+    new_window: true
+  added: 4050
 paste:
   command_type: text
   doc_string: Paste the text on the clipboard at the text selection location(s), replacing
@@ -178,15 +227,27 @@ prev_field:
 prev_misspelling:
   command_type: text
   doc_string: Navigate to the previous misspelling in the document.
+prev_modification:
+  command_type: text
+  doc_string: Navigate to the previous modification in the document.
+prev_os_tab:
+  command_type: window
+  doc_string: Set the focus to the previous window in the os tab.
 prev_result:
   command_type: window
   doc_string: Jump to the previous build result.
 prev_view:
+  args:
+    extend: true
   command_type: window
   doc_string: Set the focus to the previous view tab bar.
 prev_view_in_stack:
   command_type: window
   doc_string: Set the focus to the previous view in the stack of recent edited view.
+prompt_add_folder:
+  command_type: window
+  doc_string: Show the OS' native open dialog, so the user can choose what folder they
+    want to add to the sidebar.
 prompt_open_file:
   command_type: window
   doc_string: Show the OS' native open dialog, so the user can choose what file they
@@ -195,10 +256,21 @@ prompt_open_folder:
   command_type: window
   doc_string: Show the OS' native open dialog, so the user can choose what folder they
     want to open.
+prompt_open_project_or_workspace:
+  command_type: window
+  doc_string: Show the OS' native open dialog, so the user can choose what project they
+    want to open.
 prompt_save_as:
   command_type: window
   doc_string: Show the OS' native save as dialog, so the user can choose the path
     where they want the file to be saved.
+prompt_select_workspace:
+  command_type: window
+  doc_string: Quick Switch Project.
+prompt_switch_project_or_workspace:
+  command_type: window
+  doc_string: Show the OS' native open dialog, so the user can choose what project they
+    want to switch to.
 quick_diff:
   command_type: window
   doc_string: Show a diff of the file currently in buffer compared to its saved state.
@@ -208,6 +280,9 @@ redo:
 redo_or_repeat:
   command_type: text
   doc_string: Redo the last undo or repeat the last action if there is no undo to revert.
+refresh_folder_list:
+  command_type: window
+  doc_string: Refresh the folder list in the sidebar from the filesystem.
 reindent:
   args:
     single_line: false
@@ -219,6 +294,13 @@ resize_window:
     - height:
   command_type: window
   doc_string: Resize the window('s external bounds) to the width and height specified.
+revert_hunk:
+  command_type: text
+  doc_string: Revert a diff hunk.
+  added: 4053
+revert_modification:
+  command_type: text
+  doc_string: Revert a single modification.
 right_delete:
   command_type: text
   doc_string: Delete the character to the right of the text selection caret(s).
@@ -232,12 +314,19 @@ run_macro_file:
   doc_string: Run a macro saved in a macro file.
 save:
   args:
+    async: true
     encoding:
   command_type: text
   doc_string: Save the active document.
 save_all:
   command_type: window
   doc_string: Save all the open documents in the active window.
+save_project_and_workspace_as:
+  command_type: window
+  doc_string: Save active project and workspace as ....
+save_workspace_as:
+  command_type: window
+  doc_string: Save active workspace as ....
 scroll_lines:
   args:
     amount: 1.0
@@ -277,6 +366,7 @@ show_overlay:
     - overlay: goto|command_palette
     - text:
     - show_files:
+    - command:
   command_type: window
   doc_string: Show the overlay from the argument.
 show_panel:
@@ -303,12 +393,29 @@ soft_undo:
 split_selection_into_lines:
   command_type: text
   doc_string: Split each selection into individual lines.
+swap_line_down:
+  command_type: text
+  doc_string: Move each caret's line down by one.
+swap_line_up:
+  command_type: text
+  doc_string: Move each caret's line up by one.
 toggle_bookmark:
   command_type: text
   doc_string: For each selection, toggle it's bookmarked state.
 toggle_full_screen:
   command_type: window
   doc_string: Toggle whether the current Sublime Text window is in full screen mode.
+toggle_inline_diff:
+  args:
+    prefer_hide: false
+  command_type: text
+  doc_string: Toggle whether the inline diff of the modifications under the cursor is displayed.
+toggle_menubar:
+  command_type: window
+  doc_string: Toggle the visibility of the menu bar.
+toggle_minimap:
+  command_type: window
+  doc_string: Toggle the visibility of the minimap.
 toggle_overwrite:
   command_type: text
   doc_string: Toggle whether the caret is in insert mode or overwrite mode.
@@ -323,9 +430,16 @@ toggle_setting:
 toggle_side_bar:
   command_type: window
   doc_string: Toggle the visibility of the side bar.
+toggle_status_bar:
+  command_type: window
+  doc_string: Toggle the visibility of the status bar.
+toggle_tabs:
+  command_type: window
+  doc_string: Toggle the visibility of the tab controls.
 undo:
   command_type: text
   doc_string: Undo the last action.
 unindent:
   command_type: text
   doc_string: Unindent the selection by one level.
+...

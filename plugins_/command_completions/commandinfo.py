@@ -11,7 +11,7 @@ from .yaml_omap import SaveOmapLoader
 
 BUILTIN_METADATA_FILENAME = "builtin_commands_meta_data.yaml"
 
-l = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def get_command_name(command_class):
@@ -51,20 +51,21 @@ def get_builtin_command_meta_data():
     Returns (dict)
         The stored meta data for each command, keyed by their names.
     """
-    l.debug("Loading built-in command meta data")
+    logger.debug("Loading built-in command meta data")
 
     res_paths = sublime.find_resources(BUILTIN_METADATA_FILENAME)
-    result = {}
+    meta, data = {}, {}
     for res_path in res_paths:
         try:
             res_raw = sublime.load_resource(res_path)
-            res_content = yaml.load(res_raw, Loader=SaveOmapLoader)
+            res_meta, res_data = yaml.load_all(res_raw, Loader=SaveOmapLoader)
         except (OSError, ValueError):
-            l.exception("couldn't load resource: %s", res_path)
+            logger.exception("couldn't load resource: %s", res_path)
         else:
-            result.update(res_content)
+            meta.update(res_meta)
+            data.update(res_data)
 
-    return result
+    return meta, data
 
 
 @functools.lru_cache()
@@ -81,23 +82,27 @@ def get_builtin_commands(command_type=""):
     Returns (frozenset of str)
         The command names for the type.
     """
-    meta = get_builtin_command_meta_data()
+    meta, data = get_builtin_command_meta_data()
     if not command_type:
-        result = frozenset(meta.keys())
+        result = frozenset(data.keys())
     else:
-        result = frozenset(k for k, v in meta.items()
+        result = frozenset(k for k, v in data.items()
                            if v['command_type'] == command_type)
 
+    should_check_outdated = int(sublime.version()) >= meta.get('build', 1e10)
     for c in iter_python_command_classes(command_type):
         name = get_command_name(c)
         module = c.__module__
         package = module.split(".")[0]
-        if package == 'Default':
-            if name in result:
-                l.warning(
-                    'command "{name}" in the {package} package is defined in the built-in '
-                    'metadata file, probably it should not be'.format(name=name, package=package)
-                )
+        if (
+            should_check_outdated
+            and package == 'Default'
+            and name in result
+        ):
+            logger.warning(
+                'command "{name}" in the {package} package is defined in the built-in'
+                ' metadata file. Probably it should not be'.format(name=name, package=package)
+            )
 
     return result
 
@@ -141,8 +146,8 @@ def extract_command_class_args(command_class):
     args = spec.args
     defaults = spec.defaults or ()
     num_non_default_args = len(args) - len(defaults)
-    l.debug("Args for command %r: %s; defaults: %s",
-            get_command_name(command_class), args, defaults)
+    logger.debug("Args for command %r: %s; defaults: %s",
+                 get_command_name(command_class), args, defaults)
 
     arg_dict = OrderedDict()
     for i, arg in enumerate(args):
@@ -150,7 +155,8 @@ def extract_command_class_args(command_class):
             continue
         elif i == 1 and issubclass(command_class, sublime_plugin.TextCommand):  # and 'edit'
             if arg != "edit":
-                l.warning("Second argument for TextCommand is not named 'edit'. Ignoring anyway")
+                logger.warning("Second argument for TextCommand is not named 'edit'."
+                               " Ignoring anyway")
             continue
         elif i < num_non_default_args:
             value = None
@@ -189,7 +195,7 @@ def get_args_from_command_name(command_name):
     Returns (dict with arg mapping)
         Maps arguments to their default value (or None).
     """
-    builtin_meta_data = get_builtin_command_meta_data()
+    _, builtin_meta_data = get_builtin_command_meta_data()
     if command_name in builtin_meta_data:
         return builtin_meta_data[command_name].get("args", {})
     else:

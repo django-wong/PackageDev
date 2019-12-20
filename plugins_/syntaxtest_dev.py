@@ -6,8 +6,9 @@ from os import path
 import sublime
 import sublime_plugin
 
+from sublime_lib.flags import RegionOption
+
 from .lib import get_setting
-from .lib.flags import style_flags_from_list
 
 __all__ = (
     'SyntaxTestHighlighterListener',
@@ -16,7 +17,7 @@ __all__ = (
     'AssignSyntaxTestSyntaxListener',
 )
 
-l = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 AssertionLineDetails = namedtuple(
     'AssertionLineDetails', ['comment_marker_match', 'assertion_colrange', 'line_region']
@@ -53,6 +54,8 @@ def get_syntax_test_tokens(view):
 
 class SyntaxTestHighlighterListener(sublime_plugin.ViewEventListener):
 
+    # TODO multiple views into the same file
+
     @classmethod
     def is_applicable(cls, settings):
         """Disable the listener completely when tabs are used."""
@@ -78,7 +81,7 @@ class SyntaxTestHighlighterListener(sublime_plugin.ViewEventListener):
         """
 
         name = self.view.file_name()
-        if name and not path.basename(name).startswith('syntax_test_'):
+        if name and not path.basename(name).startswith('syntax_test'):
             self.header = None
             return
         self.header = get_syntax_test_tokens(self.view)
@@ -183,7 +186,7 @@ class SyntaxTestHighlighterListener(sublime_plugin.ViewEventListener):
 
         scope = get_setting('syntax_test.highlight_scope', 'text')
         styles = get_setting('syntax_test.highlight_styles', ['DRAW_NO_FILL'])
-        style_flags = style_flags_from_list(styles)
+        style_flags = RegionOption(*styles)
 
         self.view.add_regions('current_syntax_test', [region], scope, '', style_flags)
 
@@ -236,7 +239,7 @@ def find_common_scopes(scopes, skip_syntax_suffix):
     # as any scopes that doesn't appear in this index aren't worth checking, they can't be common
 
     # skip the base scope i.e. `source.python`
-    check_scopes = scopes[0].split()[1:]
+    check_scopes = next(iter(scopes)).split()[1:]
 
     shared_scopes = ''
     # stop as soon as at least one shared scope was found
@@ -325,12 +328,15 @@ class PackagedevSuggestSyntaxTestCommand(sublime_plugin.TextCommand):
         view = self.view
         view.replace(edit, view.sel()[0], character)
         insert_at = view.sel()[0].begin()
+        _, col = view.rowcol(insert_at)
 
         listener = sublime_plugin.find_view_event_listener(view, SyntaxTestHighlighterListener)
         if not listener.header:
             return
 
         lines, line = listener.get_details_of_line_being_tested()
+        if not lines[-1].assertion_colrange:
+            return
         end_token = listener.header.comment_end
         # don't duplicate the end token if it is on the line but not selected
         if end_token and view.sel()[0].end() == lines[0].line_region.end():
@@ -338,43 +344,15 @@ class PackagedevSuggestSyntaxTestCommand(sublime_plugin.TextCommand):
         else:
             end_token = ''
 
-        scopes = []
-        length = 0
-        # find the following columns on the line to be tested where the scopes don't change
-        test_at_start_of_comment = False
-        col = view.rowcol(insert_at)[1]
-        assertion_colrange = lines[0].assertion_colrange or (-1, -1)
-        if assertion_colrange[0] == assertion_colrange[1]:
-            col = assertion_colrange[1]
-            test_at_start_of_comment = True
-            lines = lines[1:]
-
-        col_start, col_end = lines[0].assertion_colrange
-        base_scope = path.commonprefix([
-            view.scope_name(pos)
-            for pos in range(line.begin() + col_start, line.begin() + col_end)
-        ])
-
-        for pos in range(line.begin() + col, line.end() + 1):
-            scope = view.scope_name(pos)
-            if len(scopes) == 0:
-                scopes.append(scope)
-            elif not scope.startswith(base_scope):
-                break
-            length += 1
-            if test_at_start_of_comment:
-                break
-
-        # find the unique scopes at each existing assertion position
-        if lines and not test_at_start_of_comment:
-            col_start, col_end = lines[0].assertion_colrange
-            for pos in range(line.begin() + col_start, line.begin() + col_end):
-                scope = view.scope_name(pos)
-                if scope not in scopes:
-                    scopes.append(scope)
+        if character == '-':
+            length = 1
+            scopes = {view.scope_name(line.begin() + col)}
+        elif character == '^':
+            length, scopes = self.determine_test_extends(lines, line, col)
+        else:
+            return
 
         suggest_suffix = get_setting('syntax_test.suggest_scope_suffix', True)
-
         scope = find_common_scopes(scopes, not suggest_suffix)
 
         # delete the existing selection
@@ -390,6 +368,33 @@ class PackagedevSuggestSyntaxTestCommand(sublime_plugin.TextCommand):
             insert_at + length,
             insert_at + length + len(' ' + scope + end_token)
         ))
+
+    def determine_test_extends(self, lines, line, start_col):
+        """Determine extend of token(s) to test and return lenght and scope set.
+
+        To be precise, increase column as long as the selector wouldn't change
+        and collect the scopes.
+        """
+        view = self.view
+        col_start, col_end = lines[0].assertion_colrange
+        scopes = {
+            view.scope_name(pos)
+            for pos in range(line.begin() + col_start, line.begin() + col_end)
+        }
+        base_scope = path.commonprefix(list(scopes)).strip()
+        logger.debug("Original base scope: %r", base_scope)
+
+        length = 0
+        for pos in range(line.begin() + col_end - 1, line.end() + 1):
+            scope = view.scope_name(pos)
+            if scope.startswith(base_scope):
+                scopes.add(scope)
+                length += 1
+            else:
+                break
+
+        logger.debug("Total scopes covered: %r", scopes)
+        return length, scopes
 
 
 class AssignSyntaxTestSyntaxListener(sublime_plugin.EventListener):
@@ -411,18 +416,18 @@ class AssignSyntaxTestSyntaxListener(sublime_plugin.EventListener):
             if test_syntax in sublime.find_resources(file_name):
                 view.assign_syntax(test_syntax)
             else:  # file doesn't exist
-                l.info("Couldn't find a file at %r", test_syntax)
+                logger.info("Couldn't find a file at %r", test_syntax)
                 view.assign_syntax(self.PLAIN_TEXT)
 
         # just base name specified
         elif not current_syntax.endswith(test_syntax):
             syntax_candidates = sublime.find_resources(test_syntax)
             if syntax_candidates:
-                l.debug("Found the following candidates for %r: %r",
-                        test_syntax, syntax_candidates)
+                logger.debug("Found the following candidates for %r: %r",
+                             test_syntax, syntax_candidates)
                 view.assign_syntax(syntax_candidates[0])
             else:
-                l.info("Couldn't find a syntax matching %r", test_syntax)
+                logger.info("Couldn't find a syntax matching %r", test_syntax)
                 view.assign_syntax(self.PLAIN_TEXT)
 
         # warn user if they try to do something stupid

@@ -4,16 +4,19 @@
 name: Sublime Text Theme (JSON)
 file_extensions:
   - sublime-theme
+  - hidden-theme
 scope: source.json.sublime.theme
 
 variables:
   string_key: |-
     (?x:
-      font\.face
+        font\.face
+      | case # since 3179
     )
   color_key: |-
     (?x:
-        line_selection(?:_border)?_color
+        border_color
+      | line_selection(?:_border)?_color
       | highlight(?:_border)?_color
       | headline_color
       | (?:selected_)?(?:match_)?fg
@@ -24,6 +27,8 @@ variables:
       | color_scheme_tint(?:_2)?
       | color\d+
       | link_color # from Sublime Merge
+      | (?:accent_)?tint_modifier
+      | (?:left|right|top|bottom)_shadow
     )
   integer_key: |-
     (?x:
@@ -36,21 +41,17 @@ variables:
       | border_size
       | spacing
       | inside_spacing | outside_vspacing | outside_hspacing
+      | (?:left|right|top|bottom)_shadow_size
     )
-  padding_and_margin_key: |-
+  number_sequence_key: |-
     (?x:
         inner_margin
       | content_margin
       | row_padding
       | max_margin_trim
-    )
-  number_sequence_key: |-
-    (?x:
-        min_size
+      | min_size
       | icon_spacing
-      | tint_modifier
       | shadow_offset
-      | accent_tint_modifier
     )
   float_key: |-
     (?x:
@@ -59,8 +60,9 @@ variables:
       | opacity
       | viewport_opacity
       | hit_test_level
-      | font\.size
     )
+  font_size_key: |-
+    font\.size
   boolean_key: |-
     (?x:
         dark_content
@@ -78,9 +80,21 @@ variables:
       | selectable | selected | expandable | expanded # tree_row
       | dirty | transient # tab_control
       | panel_visible # status_bar
-      | dark | horizonzal # stat_bar_control
+      | dark | horizontal # stat_bar_control
       | pressed | confirm | highlighted # button_control
       | left | right # icon_button_control
+      | h?scrollable # scroll_area_control
+      | ignored | untracked | modified | missing | added | staged | deleted | unmerged # file_system_entry
+    )
+  platform: |-
+    (?x: linux | osx | windows )
+  # From CSS.sublime-syntax
+  css_integer: '(?:[-+]?\d+)'
+  css_exponent: '(?:[eE]{{css_integer}})'
+  css_float: |-
+    (?x:
+      [-+]? \d* (\.) \d+ {{css_exponent}}?
+    | [-+]? \d+          {{css_exponent}}
     )
 
 contexts:
@@ -208,6 +222,13 @@ contexts:
         2: storage.modifier.selector.sublime-theme
         3: punctuation.definition.string.end.json
       set: [expect-parents-sequence-value, expect-colon]
+    - match: (")(platforms)(")
+      scope: meta.mapping.key.json meta.rule-key.platforms.sublime-theme string.quoted.double.json
+      captures:
+        1: punctuation.definition.string.begin.json
+        2: storage.modifier.selector.sublime-theme
+        3: punctuation.definition.string.end.json
+      set: [expect-platforms-sequence-value, expect-colon]
 
     # color values
     - match: (")({{color_key}})(")
@@ -232,20 +253,21 @@ contexts:
         2: keyword.other.rule.sublime-theme
         3: punctuation.definition.string.end.json
       set: [expect-number-value, expect-colon]
-    - match: (")({{padding_and_margin_key}})(")
-      scope: meta.mapping.key.json meta.rule-key.number.sublime-theme string.quoted.double.json
-      captures:
-        1: punctuation.definition.string.begin.json
-        2: keyword.other.rule.sublime-theme
-        3: punctuation.definition.string.end.json
-      set: [expect-number-or-number-sequence-value, expect-colon]
     - match: (")({{number_sequence_key}})(")
       scope: meta.mapping.key.json meta.rule-key.number.sublime-theme string.quoted.double.json
       captures:
         1: punctuation.definition.string.begin.json
         2: keyword.other.rule.sublime-theme
         3: punctuation.definition.string.end.json
-      set: [expect-sequence-value, expect-colon] # actually number sequence
+      # All sequences also accept a single number that is expanded
+      set: [expect-number-or-number-sequence-value, expect-colon]
+    - match: (")({{font_size_key}})(")
+      scope: meta.mapping.key.json meta.rule-key.number.sublime-theme string.quoted.double.json
+      captures:
+        1: punctuation.definition.string.begin.json
+        2: keyword.other.rule.sublime-theme
+        3: punctuation.definition.string.end.json
+      set: [expect-font-size-value, expect-colon]
     # boolean values
     - match: (")({{boolean_key}})(")
       scope: meta.mapping.key.json meta.rule-key.string.sublime-theme string.quoted.double.json
@@ -393,6 +415,34 @@ contexts:
       pop: true
     - include: expect-string
 
+  expect-platforms-sequence-value:
+    - match: (?=\[)
+      set: [mapping-value-meta, platforms-sequence-pop]
+    - include: expect-sequence-rest
+
+  platforms-sequence-pop:
+    - match: \[
+      scope: punctuation.section.sequence.begin.json
+      set:
+        - meta_scope: meta.sequence.json meta.platforms-sequence.sublime-theme
+        - include: comments
+        - match: \]
+          scope: punctuation.section.sequence.end.json
+          pop: true
+        - match: (?=\S)
+          push: [in-sequence-expect-comma, expect-platform-string]
+
+  expect-platform-string:
+    - match: (")(!?)({{platform}})(")
+      scope: string.quoted.double.json
+      captures:
+        1: punctuation.definition.string.begin.json
+        2: keyword.operator.logical.sublime-theme
+        3: support.constant.plaform-name.sublime-theme
+        4: punctuation.definition.string.end.json
+      pop: true
+    - include: expect-string
+
   expect-settings-sequence-value:
     - match: (?=\[)
       set: [mapping-value-meta, settings-sequence-pop]
@@ -470,6 +520,7 @@ contexts:
     - include: expect-string
 
   expect-texture-mapping-value:
+    - include: Sublime JSON.sublime-syntax#expect-null-value-only
     - include: var-value
     - match: (?=\{)
       set: [mapping-value-meta, texture-mapping-pop]
@@ -603,6 +654,30 @@ contexts:
     - include: Sublime JSON.sublime-syntax#number-pop
     # Be a bit lazy here
     - include: expect-sequence-value
+
+  expect-font-size-value:
+    - include: var-value
+    - include: Sublime JSON.sublime-syntax#number-pop
+    - match: (?=")
+      push: [mapping-value-meta, font-size-string-value]
+    - include: expect-string-value
+
+  font-size-string-value:
+    - match: \"
+      scope: punctuation.definition.string.begin.json
+      set:
+        - meta_scope: string.quoted.double.json
+        - meta_content_scope: source.css-size
+        - include: Sublime JSON.sublime-syntax#inside-string
+        - match: '(?:({{css_integer}})|({{css_float}}))(r?em)?'
+          scope: constant.numeric.float.decimal.css
+          captures:
+            1: constant.numeric.integer.decimal.css
+            2: constant.numeric.float.decimal.css
+            3: punctuation.separator.decimal.css
+            4: keyword.other.unit.css
+        - match: .
+          scope: invalid.illegal.expected-font-size.sublime-theme
 
   var-value:
     - match: (?=\"var\(|\"(v(a(r)?)?)?(\"|$)) # improve ux while typing

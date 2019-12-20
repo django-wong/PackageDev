@@ -23,11 +23,21 @@ __all__ = (
     "SublimeTextCommandCompletionListener",
 )
 
-l = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _escape_in_snippet(v):
     return v.replace("}", "\\}").replace("$", "\\$")
+
+
+def is_plugin(view):
+    """Use some heuristics to determine whether a Python view shows a plugin.
+
+    Or the console input widget, should it be using the Python syntax.
+    """
+    return (view.find("import sublime", 0, sublime.LITERAL) is not None
+            or sublime.packages_path() in (view.file_name() or "")
+            or view.settings().get('is_widget'))
 
 
 def create_args_snippet_from_command_args(command_args, quote_char='"', for_json=True):
@@ -110,9 +120,9 @@ class SublimeTextCommandCompletionPythonListener(sublime_plugin.EventListener):
 
     @staticmethod
     def _create_builtin_completion(c):
-        meta = get_builtin_command_meta_data()
+        _, data = get_builtin_command_meta_data()
         show = ("{c}\t({stype}) built-in"
-                .format(c=c, stype=meta[c].get("command_type", " ")[:1].upper()))
+                .format(c=c, stype=data[c].get("command_type", " ")[:1].upper()))
         return show, c
 
     @staticmethod
@@ -134,13 +144,8 @@ class SublimeTextCommandCompletionPythonListener(sublime_plugin.EventListener):
 
     def on_query_completions(self, view, prefix, locations):
         loc = locations[0]
-        python_arg_scope = (
-            "source.python meta.function-call.python "
-            "meta.function-call.arguments.python string.quoted"
-        )
-        if not view.score_selector(loc, python_arg_scope):
-            return
-        if sublime.packages_path() not in (view.file_name() or ""):
+        python_arg_scope = ("source.python meta.function-call.arguments.python string.quoted")
+        if not view.score_selector(loc, python_arg_scope) or not is_plugin(view):
             return
 
         before_region = sublime.Region(view.line(loc).a, loc)
@@ -152,6 +157,7 @@ class SublimeTextCommandCompletionPythonListener(sublime_plugin.EventListener):
             return
         # get the command type
         caller_var = m.group('callervar')
+        logger.debug("caller_var: %s", caller_var)
         if "view" in caller_var or caller_var == "v":
             command_type = 'text'
         elif caller_var == "sublime":
@@ -205,7 +211,7 @@ class SublimeTextCommandArgsCompletionListener(sublime_plugin.EventListener):
             return self._default_args
 
         command_name = results[-1]
-        l.debug("building args completions for command %r", command_name)
+        logger.debug("building args completions for command %r", command_name)
         command_args = get_args_from_command_name(command_name)
         if not command_args:
             return self._default_args
@@ -226,10 +232,8 @@ class SublimeTextCommandArgsCompletionPythonListener(sublime_plugin.EventListene
 
     def on_query_completions(self, view, prefix, locations):
         loc = locations[0]
-        python_arg_scope = "source.python meta.function-call.python"
-        if not view.score_selector(loc, python_arg_scope):
-            return
-        if sublime.packages_path() not in (view.file_name() or ""):
+        python_arg_scope = "source.python meta.function-call.arguments.python,"
+        if not view.score_selector(loc, python_arg_scope) or not is_plugin(view):
             return
 
         before_region = sublime.Region(view.line(loc).a, loc)
@@ -238,7 +242,7 @@ class SublimeTextCommandArgsCompletionPythonListener(sublime_plugin.EventListene
         if not m:
             return
         quote_char, command_name = m.groups()
-        l.debug("building args completions for command %r", command_name)
+        logger.debug("building args completions for command %r", command_name)
 
         command_args = get_args_from_command_name(command_name)
         if command_args is None:

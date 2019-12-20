@@ -61,9 +61,8 @@ contexts:
           pop: true
         - include: scope:source.scope-selector
       with_prototype:
-        - match: '\s*(&amp;)\s*'
-          captures:
-            1: keyword.operator.with.scope-selector
+        - match: '&amp;'
+          scope: keyword.operator.with.scope-selector
     - match: '(<)(tabTrigger)(>)'
       scope: meta.tag.xml
       captures:
@@ -84,7 +83,7 @@ contexts:
         - match: '>'
           scope: punctuation.definition.tag.end.xml
           pop: true
-        - include: scope:text.xml#tag-stuff
+        - include: scope:text.xml
     - include: scope:text.xml
 
   inside_content:

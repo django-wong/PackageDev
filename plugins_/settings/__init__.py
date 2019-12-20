@@ -5,13 +5,14 @@ import os
 import sublime
 import sublime_plugin
 
+from sublime_lib.flags import RegionOption
+
 from ..lib import get_setting
-from ..lib.flags import style_flags_from_list
 from ..lib.weakmethod import WeakMethodProxy
 
 from .region_math import (VALUE_SCOPE, KEY_SCOPE, KEY_COMPLETIONS_SCOPE,
                           get_key_region_at, get_last_key_region)
-from .known_settings import KnownSettings
+from .known_settings import KnownSettings, PREF_FILE
 
 __all__ = (
     'SettingsListener',
@@ -80,16 +81,36 @@ PHANTOM_TEMPLATE = """
 </body>
 """
 
+WIDGET_SETTINGS_NAMES = {
+    "Console Input Widget",
+    "Regex Format Widget",
+    "Regex Replace Widget",
+    "Regex Widget",
+    "Widget",
+}
+
 # user package pattern
 USER_PATH = "{0}Packages{0}User{0}".format(os.sep)
 
-# logging
-l = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
+
+def is_widget_file(filename):
+    basename, ext = os.path.splitext(filename)
+    return (
+        ext == ".sublime-settings"
+        and basename in WIDGET_SETTINGS_NAMES
+        or any(basename.startswith(name + " - ") for name in WIDGET_SETTINGS_NAMES)
+    )
 
 
 class SettingsListener(sublime_plugin.ViewEventListener):
 
     is_completing_key = False
+
+    @classmethod
+    def applies_to_primary_view_only(cls):
+        return False
 
     @classmethod
     def is_applicable(cls, settings):
@@ -106,25 +127,28 @@ class SettingsListener(sublime_plugin.ViewEventListener):
         sublime_plugin.ViewEventListener.__init__(self, view)
 
         filepath = view.file_name()
-        l.debug("initializing SettingsListener for %r", view.file_name())
+        logger.debug("initializing SettingsListener for %r", view.file_name())
 
-        if filepath and filepath.endswith(".sublime-settings"):
+        self.known_settings = None
+        if filepath:
             filename = os.path.basename(filepath)
-            self.known_settings = KnownSettings(filename)
-            self.known_settings.add_on_loaded(self.do_linting)
-        elif filepath and filepath.endswith(".sublime-project"):
-            self.known_settings = KnownSettings("Preferences.sublime-settings")
+            if filepath.endswith(".sublime-project") or is_widget_file(filename):
+                logger.debug("Opening a widget settings or project file")
+                self.known_settings = KnownSettings(PREF_FILE)
+            elif filepath.endswith(".sublime-settings"):
+                self.known_settings = KnownSettings(filename)
+
+        if self.known_settings:
             self.known_settings.add_on_loaded(self.do_linting)
         else:
-            self.known_settings = None
-            l.error("Not a Sublime Text Settings or Project file: %r", filepath)
+            logger.error("Not a Sublime Text Settings or Project file: %r", filepath)
 
         self.phantom_set = sublime.PhantomSet(self.view, "sublime-settings-edit")
         if self._is_base_settings_view():
             self.build_phantoms()
 
     def __del__(self):
-        l.debug("deleting SettingsListener instance for %r", self.view.file_name())
+        logger.debug("deleting SettingsListener instance for %r", self.view.file_name())
         self.view.erase_regions('unknown_settings_keys')
         self.phantom_set.update([])
 
@@ -236,7 +260,7 @@ class SettingsListener(sublime_plugin.ViewEventListener):
                 unknown_regions,
                 scope=get_setting('settings.highlight_scope', "text"),
                 icon='dot',
-                flags=style_flags_from_list(styles)
+                flags=RegionOption(*styles)
             )
         else:
             self.view.erase_regions('unknown_settings_keys')
@@ -246,7 +270,7 @@ class SettingsListener(sublime_plugin.ViewEventListener):
         if self.view.is_loading():
             sublime.set_timeout(self.build_phantoms, 20)
             return
-        l.debug("Building phantom set for view %r", self.view.file_name())
+        logger.debug("Building phantom set for view %r", self.view.file_name())
         key_regions = self.view.find_by_selector(KEY_SCOPE)
         phantoms = []
         for region in key_regions:
@@ -261,7 +285,7 @@ class SettingsListener(sublime_plugin.ViewEventListener):
                 # to allow for phantoms to be cleaned up in __del__
                 on_navigate=WeakMethodProxy(self.on_navigate),
             ))
-        l.debug("Made %d phantoms", len(phantoms))
+        logger.debug("Made %d phantoms", len(phantoms))
 
         self.phantom_set.update(phantoms)
 
@@ -292,7 +316,7 @@ class GlobalSettingsListener(sublime_plugin.EventListener):
             key_region = get_last_key_region(view, point)
             if key_region:
                 key = view.substr(key_region)
-                l.debug("showing popup after inserting key completion for %r", key)
+                logger.debug("showing popup after inserting key completion for %r", key)
                 listener.show_popup_for(key_region)
 
     def on_post_save(self, view):

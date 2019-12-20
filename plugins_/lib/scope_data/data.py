@@ -14,10 +14,20 @@ DATA = """
     constant
         numeric
             integer
+                binary
+                octal
+                decimal
+                hexadecimal
+                other
             float
-            hex
-            octal
+                binary
+                octal
+                decimal
+                hexadecimal
+                other
             complex
+                real
+                imaginary
         character
             escape
         language
@@ -33,6 +43,7 @@ DATA = """
             union
             trait
             interface
+            impl
             type
             function
                 constructor
@@ -51,13 +62,52 @@ DATA = """
         deprecated
 
     keyword
+        context
+            block
+            resource
         control
             conditional
+                case
+                else
+                elseif
+                end
+                if
+                select
+                switch
+            exception
+                assert
+                catch
+                defer
+                end
+                finally
+                try
             flow
+                await
+                break
+                continue
+                goto
+                panic
+                return
+                throw
+                yield
+            loop
+                do-while
+                end
+                for
+                repeat-until
+                while
             import
         declaration
-            extends
-            throws
+            class
+            enum
+            function
+            interface
+            impl
+            struct
+            trait
+            union
+        import
+            from
         operator
             assignment
             arithmetic
@@ -81,6 +131,9 @@ DATA = """
         raw
             inline
             block
+        info
+        warning
+        error
         other
 
     meta
@@ -90,12 +143,16 @@ DATA = """
         union
         trait
         interface
+        impl
         type
         function
             parameters
             return-type
         namespace
         preprocessor
+        annotation
+            identifier
+            parameters
         path
         function-call
         block
@@ -107,15 +164,19 @@ DATA = """
         tag
         paragraph
         toc-list
+        string
+        interpolation
         sequence
         mapping
             key
             value
-        annotation
         set
 
     punctuation
         definition
+            annotation
+                begin
+                end
             string
                 begin
                 end
@@ -123,10 +184,15 @@ DATA = """
                 begin
                 end
             keyword
+                begin
+                end
             generic
                 begin
                 end
             placeholder
+                begin
+                end
+            variable
                 begin
                 end
         section
@@ -154,7 +220,11 @@ DATA = """
             set
                 begin
                 end
+            interpolation
+                begin
+                end
         separator
+            continuation
             sequence
             mapping
                 key-value
@@ -171,6 +241,14 @@ DATA = """
 
     storage
         type
+            function
+            class
+            struct
+            enum
+            union
+            trait
+            interface
+            impl
         modifier
 
     string
@@ -181,7 +259,6 @@ DATA = """
             other
         unquoted
         regexp
-        interpolated
         other
 
     support
@@ -200,4 +277,18 @@ DATA = """
         other
             constant
             member
+            readwrite
+
+    source
+    text
+
+    color
+        bluish
+        cyanish
+        greenish
+        orangish
+        pinkish
+        purplish
+        redish
+        yellowish
 """

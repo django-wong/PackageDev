@@ -109,7 +109,7 @@
 <!--                     ^^^^^^^ invalid.deprecated.expected-name-or-value.tmPreferences -->
                     <string>&amp;</string>
 <!--                 ^^^^^^ - invalid -->
-<!--                        ^^^^^ constant.character.entity.xml -->
+<!--                        ^^^^^ constant.character.entity.named.xml -->
                 </dict>
                 <dict>
                     <key>name</key>
@@ -172,7 +172,7 @@
 <!--                 ^^^^^^^^^^^^^ comment.block.xml -->
 <!--                              ^^ keyword - invalid - comment -->
 <!--                                ^^^^^^^^^^^^^^^^ comment.block.xml -->
-<!--                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invalid.deprecated.ignored-after-comment-or-cdata - meta.tag -->
+<!--                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invalid.deprecated.ignored-after-comment-or-cdata -->
 <!--                                                                                          ^^^^^^^^^ meta.tag.xml -->
             <key>cancelCompletion</key>
             <string> <![CDATA[.*]]>ignored by ST<![CDATA[<!-- test --> </string>]]>test<!-- still ignored -->here   </string>
@@ -205,7 +205,7 @@
                 s/(\[[^\]]*\])|\b_\b\s*|\(.*|(\s{2,})/$1(?2 )/g; (?# this is a regex transformation
 <!--              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ meta.regex.transformation.tmPreferences source.regexp.oniguruma -->
 <!--            ^^ meta.inside-plist.plist meta.inside-dict.plist meta.inside-value.string.plist meta.regex.transformation.tmPreferences punctuation.definition.substitute-what.tmPreferences -->
-<!--                                                 ^ punctuation.definition.substitute-with.tmPreferences -->
+<!--                                                 ^ punctuation.definition.substitute-with.tmPreferences - source -->
 <!--                                                     ^^ keyword.other.backref-and-recursion.conditional.regexp-replacement -->
 <!--                                                         ^ punctuation.definition.substitute-flags.tmPreferences -->
 <!--                                                          ^ storage.modifier.mode.regexp.transformation.tmPreferences -->

@@ -7,12 +7,14 @@ import time
 import weakref
 
 import sublime
+from sublime_lib import encodings, ResourcePath
+
 
 from ..lib.weakmethod import WeakMethodProxy
 from ..lib import get_setting, sorted_completions
 from .region_math import VALUE_SCOPE, get_value_region_at, get_last_key_name_from
 
-l = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 PREF_FILE = "Preferences.sublime-settings"
 PREF_FILE_ALIAS = "Base File.sublime-settings"
@@ -28,14 +30,31 @@ def html_encode(string):
                  .replace("\n", "<br>") if string else ""
 
 
-def format_completion_item(value, default=False):
-    """Create a completion item with its type as description."""
+def format_completion_item(value, default=None, is_default=False, label=None, description=None):
+    """Create a completion item with its type as description.
+
+    Arguments:
+        value (any):
+            The value which is added when completions are committed.
+            If `label` is none, the `value` is used as label, too.
+        default (any):
+            Sets is_default if equals `value`.
+        is_default (bool):
+            If `True` the completion item is marked '(default)'.
+        label (str):
+            An alternative label to use to present the `value`
+            in the completions panel.
+        description (str):
+            An optional description to display after the label.
+            If `None` is provided, the data type of `value` is displayed.
+    """
     if isinstance(value, dict):
         raise ValueError("Cannot format dictionary value", value)
-    default_str = "(default) " if default else ""
-    return ("{0}  \t{2}{1}".format(sublime.encode_value(value).strip('"'),
-                                   type(value).__name__,
-                                   default_str),
+    if not is_default:
+        is_default = value in default if isinstance(default, list) else value == default
+    return (("{0}  \t(default) {1}" if is_default else "{0}  \t{1}")
+            .format(sublime.encode_value(label or value).strip('"'),
+                    description or type(value).__name__),
             value)
 
 
@@ -76,7 +95,7 @@ class KnownSettings(object):
         # __init__ will be called on the return value
         obj = cls.cache.get(filename)
         if obj:
-            l.debug("cache hit %r", filename)
+            logger.debug("cache hit %r", filename)
             return cls.cache[filename]
         else:
             obj = super().__new__(cls, **kwargs)
@@ -132,7 +151,7 @@ class KnownSettings(object):
             self.on_loaded_once_callbacks.append(WeakMethodProxy(on_loaded))
 
     def __del__(self):
-        l.debug("deleting KnownSettings instance for %r", self.filename)
+        logger.debug("deleting KnownSettings instance for %r", self.filename)
 
     def __iter__(self):
         """Iterate over default keys."""
@@ -142,7 +161,7 @@ class KnownSettings(object):
         # look for settings files asynchronously
         sublime.set_timeout_async(self._load_settings, 0)
 
-    def _load_settings(self, on_loaded_once=None):
+    def _load_settings(self):
         """Load and merge settings and their comments from all base files.
 
         The idea is each package which wants to add a valid entry to the
@@ -155,31 +174,31 @@ class KnownSettings(object):
 
         # TODO project settings include "Preferences",
         # but we don't have a syntax def for those yet
-        l.debug("loading defaults and comments for %r", self.filename)
+        logger.debug("loading defaults and comments for %r", self.filename)
         start_time = time.time()
         resources = sublime.find_resources(self.filename)
         resources += sublime.find_resources(self.filename + "-hints")
         if self.filename == PREF_FILE:
             resources += sublime.find_resources(PREF_FILE_ALIAS)
-        l.debug("found %d %r files", len(resources), self.filename)
+        logger.debug("found %d %r files", len(resources), self.filename)
 
         for resource in resources:
             if any(ignored in resource for ignored in ignored_patterns):
-                l.debug("ignoring %r", resource)
+                logger.debug("ignoring %r", resource)
                 continue
 
             try:
-                l.debug("parsing %r", resource)
+                logger.debug("parsing %r", resource)
                 lines = sublime.load_resource(resource).splitlines()
                 for key, value in self._parse_settings(lines).items():
                     # merge settings without overwriting existing ones
                     self.defaults.setdefault(key, value)
             except Exception as e:
-                l.error("error parsing %r - %s%s",
-                        resource, e.__class__.__name__, e.args)
+                logger.error("error parsing %r - %s%r",
+                             resource, e.__class__.__name__, e.args)
 
         duration = time.time() - start_time
-        l.debug("loading took %.3fs", duration)
+        logger.debug("loading took %.3fs", duration)
 
         # include general settings if we're in a syntax-specific file
         is_syntax_specific = self._is_syntax_specific()
@@ -213,7 +232,7 @@ class KnownSettings(object):
             try:
                 callback()
             except ReferenceError:
-                l.debug("removing gone-away weak on_loaded_callback reference")
+                logger.debug("removing gone-away weak on_loaded_callback reference")
                 self.on_loaded_callbacks.remove(callback)
 
     def _is_syntax_specific(self):
@@ -228,7 +247,7 @@ class KnownSettings(object):
             syntax_file_name = name_no_ext + ext
             resources = sublime.find_resources(syntax_file_name)
             if resources:
-                l.debug("syntax-specific settings file for %r", resources[0])
+                logger.debug("syntax-specific settings file for %r", resources[0])
                 return True
         return False
 
@@ -470,38 +489,37 @@ class KnownSettings(object):
         """
         value_region = get_value_region_at(view, point)
         if not value_region:
-            l.debug("unable to find current key region")
+            logger.debug("unable to find current key region")
             return None
 
         key = get_last_key_name_from(view, value_region.begin())
         if not key:
-            l.debug("unable to find current key")
+            logger.debug("unable to find current key")
             return None
 
         completions = self._value_completions_for(key)
         if not completions:
-            l.debug("no completions to offer")
+            logger.debug("no completions to offer")
             return None
 
-        is_str = any(bool(
-            isinstance(value, str)
-            or isinstance(value, list) and value and isinstance(value[0], str)
-        ) for _, value in completions)
-        # cursor already within quotes
+        is_str = any(
+            bool(isinstance(value, str)
+                 or isinstance(value, list) and value and isinstance(value[0], str)
+                 ) for _, value in completions
+        )
         in_str = view.match_selector(point, "string")
-        l.debug("completing a string (%s) within a string (%s)", is_str, in_str)
-        # 'meta.structure.array' is used in the default JSON syntax
-        # (PR pending: https://github.com/sublimehq/Packages/pull/862)
+        logger.debug("completing a string (%s) within a string (%s)", is_str, in_str)
+
         is_list = isinstance(self.defaults.get(key), list)
-        in_list = view.match_selector(point, "meta.sequence | meta.structure.array")
-        l.debug("completing a list item (%s) within a list (%s)", is_list, in_list)
+        in_list = view.match_selector(point, "meta.sequence")
+        logger.debug("completing a list item (%s) within a list (%s)", is_list, in_list)
 
         if in_str and not is_str:
             # We're within a string but don't have a string value to complete.
             # Complain about this in the status bar, I guess.
             msg = "Cannot complete value set within a string"
             view.window().status_message(msg)
-            l.warning(msg)
+            logger.warning(msg)
             return None
 
         if in_str and is_str:
@@ -559,45 +577,22 @@ class KnownSettings(object):
             {(trigger, contents), ...}
                 A set of all completions.
         """
+        logger.debug("building completions for key %r", key)
+        default = self.defaults.get(key)
+        logger.debug("default value: %r", default)
+
         if key == 'color_scheme':
-            completions = self._color_scheme_completions()
+            completions = self._color_scheme_completions(default)
+        elif key in ('default_encoding', 'fallback_encoding'):
+            completions = self._encoding_completions(default)
         elif key == 'theme':
-            completions = self._theme_completions()
+            completions = self._theme_completions(default)
         else:
-            l.debug("building completions for key %r", key)
-            default = self.defaults.get(key)
-            l.debug("default value: %r", default)
-            completions = self._completions_from_comment(key)
+            completions = self._completions_from_comment(key, default)
             completions |= self._completions_from_default(key, default)
-            completions = self._marked_default_completions(completions, default)
         return completions
 
-    def _marked_default_completions(self, completions, default):
-        """Mark completion items as default.
-
-        For a list as default value, mark all of its values as default.
-
-        Arguments:
-            completions (set):
-                The set with the completion items.
-
-            default (Any):
-                The default value (can also be a list).
-
-        Returns:
-            {(trigger, contents), ...}
-                A set of all completions with defaults marked.
-        """
-        default_completions = set()
-        is_list = isinstance(default, list)
-        for item in completions:
-            value = item[1]
-            if is_list and value in default or value == default:
-                item = format_completion_item(value, default=True)
-            default_completions.add(item)
-        return default_completions
-
-    def _completions_from_comment(self, key):
+    def _completions_from_comment(self, key, default):
         """Parse settings comments and return all possible values.
 
         Many settings are commented with a list of quoted words representing
@@ -607,6 +602,9 @@ class KnownSettings(object):
         Arguments:
             key (string):
                 the settings key name to read comments from
+            default (any):
+                the default value of the setting used to mark completion items
+                as "default".
 
         Returns:
             {(trigger, contents), ...}
@@ -629,13 +627,13 @@ class KnownSettings(object):
                 # Suggest list items as completions instead of a string
                 # representation of the list.
                 # Unless it's a dict.
-                completions.update(format_completion_item(v) for v in value
-                                   if not isinstance(v, dict))
+                completions.update(format_completion_item(v, default)
+                                   for v in value if not isinstance(v, dict))
             elif isinstance(value, dict):
                 # TODO what should we do with dicts?
                 pass
             else:
-                completions.add(format_completion_item(value))
+                completions.add(format_completion_item(value, default))
 
         for match in re.finditer(r'"([\.\w]+)"', comment):
             # quotation marks either wrap a string, a numeric or a boolean
@@ -645,11 +643,12 @@ class KnownSettings(object):
                 value = decode_value(value)
             except ValueError:
                 pass
-            completions.add(format_completion_item(value))
+            completions.add(format_completion_item(value, default))
 
         return completions
 
-    def _completions_from_default(self, key, default):
+    @staticmethod
+    def _completions_from_default(key, default):
         """Built completions from default value.
 
         Arguments:
@@ -660,42 +659,82 @@ class KnownSettings(object):
             {(trigger, contents), ...}
                 A set of all completions.
         """
-        if default is None or default is "":
+        if default is None or default == "":
             return set()
         elif isinstance(default, bool):
-            return {format_completion_item(True), format_completion_item(False)}
+            return set(format_completion_item(value, default=default) for value in [True, False])
         elif isinstance(default, list):
-            return {format_completion_item(value) for value in default}
+            return {format_completion_item(value, is_default=True) for value in default}
         elif isinstance(default, dict):
             return set()  # TODO can't complete these yet
         else:
-            return {format_completion_item(default)}
+            return {format_completion_item(default, is_default=True)}
 
     @staticmethod
-    def _color_scheme_completions():
+    def _color_scheme_completions(default):
         """Create completions of all visible color schemes.
 
         The set will not include color schemes matching at least one entry of
         `"settings.exclude_color_scheme_patterns": []`.
 
+        default (string):
+            The default `color_scheme` value.
+
         Returns:
             {(trigger, contents], ...}
                 A set of all completions.
                 - trigger (string): base file name of the color scheme
-                - contents (string): the path to commit to the settings
+                - contents (string): the value to commit to the settings
         """
         hidden = get_setting('settings.exclude_color_scheme_patterns') or []
         completions = set()
+        for scheme_path in sublime.find_resources("*.sublime-color-scheme"):
+            if not any(hide in scheme_path for hide in hidden):
+                try:
+                    root, package, *_, name = scheme_path.split("/")
+                except ValueError:
+                    continue
+                if root == 'Cache':
+                    continue
+                completions.add(format_completion_item(
+                    value=name, default=default, description=package
+                ))
+
         for scheme_path in sublime.find_resources("*.tmTheme"):
             if not any(hide in scheme_path for hide in hidden):
-                _, package, *_, file_name = scheme_path.split("/")
-                completions.add((
-                    "{0}  \t{1}".format(file_name, package), scheme_path))
+                try:
+                    root, package, *_, name = scheme_path.split("/")
+                except ValueError:
+                    continue
+                if root == 'Cache':
+                    continue
+                completions.add(format_completion_item(
+                    value=scheme_path, default=default, label=name, description=package
+                ))
         return completions
 
     @staticmethod
-    def _theme_completions():
+    def _encoding_completions(default):
+        """Create completions of all available encoding values.
+
+        default (string):
+            The default `encoding` value.
+
+        Returns:
+            {(trigger, contents), ...}
+                A set of all completions.
+                - trigger (string): the encoding in sublime format
+                - contents (string): the encoding in sublime format
+        """
+        return {format_completion_item(enc, default=default, description="encoding")
+                for enc in encodings.SUBLIME_TO_STANDARD.keys()}
+
+    @staticmethod
+    def _theme_completions(default):
         """Create completions of all visible themes.
+
+        default (string):
+            The default `theme` value.
 
         The set will not include color schemes matching at least one entry of
         `"settings.exclude_theme_patterns": []` setting.
@@ -708,8 +747,9 @@ class KnownSettings(object):
         """
         hidden = get_setting('settings.exclude_theme_patterns') or []
         completions = set()
-        for theme in sublime.find_resources("*.sublime-theme"):
-            theme = os.path.basename(theme)
-            if not any(hide in theme for hide in hidden):
-                completions.add(("{0}  \ttheme".format(theme), theme))
+        for theme_path in ResourcePath.glob_resources("*.sublime-theme"):
+            if not any(hide in theme_path.name for hide in hidden):
+                completions.add(format_completion_item(
+                    value=theme_path.name, default=default, description="theme"
+                ))
         return completions
